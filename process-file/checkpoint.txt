@@ -1,0 +1,2 @@
+1744528398.9889832|/Users/duynguyen/Documents/vikki-bank/de-training/vikki-train/way4/process-file/file_test/test_file_1744471089_2.xml|44951bf1b2132fe3665c645ad7285de073dfcde2790990cff4476af24234decb
+1744528647.2824347|/Users/duynguyen/Documents/vikki-bank/de-training/vikki-train/way4/process-file/file_test/test_file_1744474264_0.xml|f939c4c00750c0e8a84a6c7e8356bca2e31e026e981ec2f2d1420db8b92f5e2d
