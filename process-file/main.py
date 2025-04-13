@@ -1,4 +1,3 @@
-import time
 import os
 from datetime import datetime
 import io 
@@ -6,14 +5,12 @@ from typing import List, Tuple
 import re
 import hashlib
 from xml.dom import minidom
-import paramiko
 from io import BytesIO
 from enum import Enum
-import tempfile
 import gnupg
+import sys
+import argparse
 
-PERSO_FILE_PATH = '/Users/duynguyen/Documents/vikki-bank/de-training/vikki-train/way4/process-file/file_test'
-SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 
 class LogStatus(str, Enum):
     STARTED = "Started"
@@ -407,17 +404,43 @@ def encrypt_file(xml_files: list, key: str, dir_path, log_file_path) -> bool:
         
     except Exception as e:
         raise
+    
+    
+
+def parse_args():
+    """Parse command-line arguments."""
+    parser = argparse.ArgumentParser(description="Process and encrypt XML files.")
+    parser.add_argument('--input-folder', required=True, help="Path to the folder containing input files")
+    parser.add_argument('--file-types', nargs='+', default=['.xml'], help="File types to process (e.g. .xml)")
+    parser.add_argument('--gpg-key', required=True, help="Path to the GPG key file")
+    parser.add_argument('--checkpoint-file', required=True, help="Path to the checkpoint file")
+    parser.add_argument('--log-file', required=True, help="Path to the log file")
+    parser.add_argument('--output-folder', required=True, help="Path to the folder for encrypted files")
+    return parser.parse_args()
 
 def main():
-    checkpoint_file_path = os.path.join(SCRIPT_DIR, 'checkpoint.txt')
-    log_file_path = os.path.join(SCRIPT_DIR, 'processing.log')
+    args = parse_args()
+    xml_dir = args.input_folder
+    file_types = args.file_types
+    gpg_key_path = args.gpg_key
+    checkpoint_file_path = args.checkpoint_file
+    log_file_path = args.log_file
+    dir_encrypt_path = args.output_folder
     department = "Processing"
     frequency = "Daily"
-    folder_path = PERSO_FILE_PATH
-    file_types = ['.xml']
-    gpg_key_path = os.path.join(SCRIPT_DIR, 'data_4096_pub.asc')  # Assuming a GPG key file
-    dir_encrypt_path = os.path.join(SCRIPT_DIR, 'encrypted_files')
+    # if getattr(sys, 'frozen', False):
+    #     base_dir = os.path.dirname(sys.executable)
+    # else:
+    #     base_dir = os.path.dirname(os.path.abspath(__file__))
+    # base_dir = os.path.dirname(os.path.abspath(__file__))
+
+    # checkpoint_file_path = os.path.join(base_dir, 'checkpoint.txt')
+    # log_file_path = os.path.join(base_dir, 'processing.log')
+    # gpg_key_path = os.path.join(base_dir, 'data_4096_pub.asc') 
+    # dir_encrypt_path = os.path.join(base_dir, 'encrypted_files')
+
     os.makedirs(dir_encrypt_path, exist_ok=True)
+
 
     
     try:
@@ -425,7 +448,7 @@ def main():
                  LogEvent.PROCESS_START, "Initiating file processing")
         # check new file
         new_files = filter_newest_file_with_checkpoint(
-            folder_path, checkpoint_file_path, file_types, None, 
+            xml_dir, checkpoint_file_path, file_types, None, 
             log_file_path, department, frequency
         )
         # convert file xml to mc 
