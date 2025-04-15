@@ -1,6 +1,6 @@
 import os
 from datetime import datetime
-import io 
+import io
 from typing import List, Tuple
 import re
 import hashlib
@@ -10,8 +10,8 @@ from enum import Enum
 import gnupg
 import sys
 import yaml
-import argparse
 from pathlib import Path
+
 class LogStatus(str, Enum):
     STARTED = "Started"
     SELECTED = "Selected"
@@ -28,7 +28,7 @@ class LogEvent(str, Enum):
     CHECKPOINT = "Checkpoint"
     PROCESSING = "Processing"
     FILE_ENCRYPT = "FileEncrypt"
-    
+
 def format_logging_message(department, file_name, status, event_type, details):
     now = datetime.now()
     timestamp = now.strftime("%Y-%m-%d %H:%M:%S") + f".{int(now.microsecond / 1000):03d}"
@@ -43,7 +43,7 @@ def format_logging_message(department, file_name, status, event_type, details):
 
 def write_logging_to_file(file_path, message):
     try:
-        with open(file_path, 'a') as f:
+        with open(file_path, 'a', encoding='utf-8') as f:
             f.write(message + '\n')
     except Exception as e:
         print(f"Error writing to log file: {e}")
@@ -60,13 +60,13 @@ def log_event(log_file, department, file_name, status, event_type, details=""):
 
 def check_summary_file(file_path, log_file, department):
     try:
-        with open(file_path, 'r') as f:
+        with open(file_path, 'r', encoding='utf-8') as f:
             content = f.read().strip()
-            log_event(log_file, department, file_path, LogStatus.SUCCESS, 
+            log_event(log_file, department, file_path, LogStatus.SUCCESS,
                      LogEvent.PROCESSING, "Successfully read summary file")
             return bool(content)
     except Exception as e:
-        log_event(log_file, department, file_path, LogStatus.ERROR, 
+        log_event(log_file, department, file_path, LogStatus.ERROR,
                  LogEvent.PROCESSING, f"Error reading summary file: {str(e)}")
         return False
 
@@ -83,16 +83,16 @@ def calculate_checksum(file_path):
 
 def verify_checksum(file_path, expected_checksum, log_file, department):
     try:
-        actual_checksum = calculate_checksum(file_path, log_file, department)
+        actual_checksum = calculate_checksum(file_path)
         if actual_checksum is None:
             return False
         result = actual_checksum == expected_checksum.lower()
-        log_event(log_file, department, file_path, 
-                 LogStatus.SUCCESS if result else LogStatus.FAILED, 
+        log_event(log_file, department, file_path,
+                 LogStatus.SUCCESS if result else LogStatus.FAILED,
                  LogEvent.VERIFY, f"Checksum verification: {result}")
         return result
     except Exception as e:
-        log_event(log_file, department, file_path, LogStatus.ERROR, 
+        log_event(log_file, department, file_path, LogStatus.ERROR,
                  LogEvent.VERIFY, f"Checksum verification failed: {str(e)}")
         return False
 
@@ -274,15 +274,15 @@ def convert_xml_to_mc(xml_file):
     except Exception as e:
         print(f"Error: {str(e)}")
         return
-         
+      
 def check_noembossing(card_number):
     return "0"
 
 def convert_embossing_name_track1(emboss_name):
     return emboss_name
 
-def list_files_recursive(folder_path: str, file_types: List[str] = None, 
-                       regex_pattern: str = None, log_file: str = None, 
+def list_files_recursive(folder_path: str, file_types: List[str] = None,
+                       regex_pattern: str = None, log_file: str = None,
                        department: str = None) -> List[Tuple[str, float, str]]:
     file_info = []
     try:
@@ -290,7 +290,7 @@ def list_files_recursive(folder_path: str, file_types: List[str] = None,
             item_path = os.path.join(folder_path, item_name)
             if os.path.isdir(item_path):
                 file_info.extend(
-                    list_files_recursive(item_path, file_types, regex_pattern, 
+                    list_files_recursive(item_path, file_types, regex_pattern,
                                       log_file, department)
                 )
                 continue
@@ -298,16 +298,16 @@ def list_files_recursive(folder_path: str, file_types: List[str] = None,
                 mtime = os.path.getmtime(item_path)
                 if (not file_types or any(item_name.endswith(ext) for ext in file_types)) and \
                    (not regex_pattern or re.match(regex_pattern, item_name)):
-                    checksum = calculate_checksum(item_path) 
-                    file_info.append((item_path, mtime, checksum))
-        log_event(log_file, department, folder_path, LogStatus.SUCCESS, 
+                    checksum = calculate_checksum(item_path)
+                    if checksum:
+                        file_info.append((item_path, mtime, checksum))
+        log_event(log_file, department, folder_path, LogStatus.SUCCESS,
                  LogEvent.FILE_SCAN, f"Found {len(file_info)} matching files")
     except Exception as e:
-        log_event(log_file, department, folder_path, LogStatus.ERROR, 
+        log_event(log_file, department, folder_path, LogStatus.ERROR,
                  LogEvent.FILE_SCAN, f"Error listing files: {str(e)}")
         raise RuntimeError(f"An error occurred while listing files in {folder_path}: {e}")
     return file_info
-
 
 def filter_newest_file_with_checkpoint(
     log_file_path: str,
@@ -319,14 +319,14 @@ def filter_newest_file_with_checkpoint(
     department: str = None
 ) -> List[Tuple[str, float, str]]:
     if not os.path.exists(folder_path):
-        log_event(log_file, department, folder_path, LogStatus.ERROR, 
+        log_event(log_file, department, folder_path, LogStatus.ERROR,
                  LogEvent.FILE_SCAN, "Folder not found")
         raise RuntimeError("Folder not found.")
-    
-    files = list_files_recursive(folder_path, file_types, regex_pattern, 
+
+    files = list_files_recursive(folder_path, file_types, regex_pattern,
                                log_file, department)
     if not files:
-        log_event(log_file, department, folder_path, LogStatus.FAILED, 
+        log_event(log_file, department, folder_path, LogStatus.FAILED,
                  LogEvent.FILE_SCAN, "No matching files found")
         raise RuntimeError("No matching files found.")
 
@@ -334,7 +334,7 @@ def filter_newest_file_with_checkpoint(
     last_checksum = None
     try:
         if os.path.exists(checkpoint_file):
-            with open(checkpoint_file, 'r') as f:
+            with open(checkpoint_file, 'r', encoding='utf-8') as f:
                 lines = f.readlines()
                 if lines:
                     last_line = lines[-1].strip()
@@ -342,155 +342,206 @@ def filter_newest_file_with_checkpoint(
                         last_mtime_str, last_file, last_checksum = last_line.split("|", 2)
                         last_mtime = float(last_mtime_str)
     except Exception as e:
-        log_event(log_file, department, checkpoint_file, LogStatus.ERROR, 
+        log_event(log_file, department, checkpoint_file, LogStatus.ERROR,
                  LogEvent.CHECKPOINT, f"Error reading checkpoint: {str(e)}")
-    # filter file base on mtime and checksum
+
     new_files = [
-        (path, mtime, checksum) 
-        for path, mtime, checksum in files 
+        (path, mtime, checksum)
+        for path, mtime, checksum in files
         if mtime > last_mtime or (mtime == last_mtime and checksum != last_checksum)
     ]
-    # Log event separately if needed
+
     for path, mtime, checksum in new_files:
         log_event(
-            log_file_path, 
-            department, 
-            path,  # assuming newest_file refers to the path
-            LogStatus.SELECTED, 
-            LogEvent.FILE_SCAN, 
+            log_file_path,
+            department,
+            path,
+            LogStatus.SELECTED,
+            LogEvent.FILE_SCAN,
             f"Selected file with mtime: {mtime}, checksum: {checksum}"
         )
     if not new_files:
-        log_event(log_file, department, folder_path, LogStatus.FAILED, 
+        log_event(log_file, department, folder_path, LogStatus.FAILED,
                  LogEvent.FILE_SCAN, "No new files detected")
         raise RuntimeError("No new files detected.")
 
     new_files.sort(key=lambda x: x[1], reverse=True)
-    
+
     return new_files
 
-        
-def encrypt_file(xml_files: list, key: str, dir_path, log_file_path) -> bool:    
-    # Initialize GPG in memory (no gnupghome directory needed)
-    gpg = gnupg.GPG()
-    
+
+def get_gpg_binary_path():
+    if getattr(sys, 'frozen', False):  # Running as .exe
+        base_path = sys._MEIPASS
+        gpg_path = os.path.join(base_path, 'gnupg', 'bin', 'gpg.exe')
+    else:
+        gpg_path = None  # Let gnupg find system GPG when not bundled
+    return gpg_path
+
+def encrypt_file(xml_files: list, key: str, dir_path, log_file_tpath) -> bool:
     try:
-        # Import key directly from string
+        # Use bundled GPG binary
+        gpg_binary = get_gpg_binary_path()
+        gpg = gnupg.GPG(gpgbinary=gpg_binary, gnupghome=None)
         import_result = gpg.import_keys(key)
         if import_result.count == 0:
+            log_event(log_file_path, "N/A", LogStatus.ERROR,
+                     LogEvent.FILE_ENCRYPT, "GPG key import failed")
             raise ValueError("GPG key import failed")
         fingerprints = [key["fingerprint"] for key in import_result.results]
         gpg.trust_keys(fingerprints, 'TRUST_ULTIMATE')
-        
-        # Process each file
+
+        success = True
         for file_key in xml_files:
+            if not file_key or not os.path.exists(file_key):
+                log_event(log_file_path, file_key or "N/A", LogStatus.ERROR,
+                         LogEvent.FILE_ENCRYPT, "File not found or invalid")
+                success = False
+                continue
             print(f"Processing file: {file_key}")
             try:
-                # Read file content into memory
-                          
                 base_filename = os.path.splitext(os.path.basename(file_key))[0]
                 output_filename = os.path.join(dir_path, f"{base_filename}.gpg")
                 with open(file_key, 'rb') as f:
                     file_content = io.BytesIO(f.read())
                 file_content.seek(0)
-                
-                # Encrypt file content
+
                 encrypted_data = gpg.encrypt(
                     file_content.getvalue(),
                     fingerprints,
                     always_trust=True
                 )
-                file_content.close()  
-                
+                file_content.close()
+
                 if not encrypted_data.ok:
                     log_event(log_file_path, file_key, LogStatus.ERROR,
                              LogEvent.FILE_ENCRYPT, f"Encryption failed: {encrypted_data.stderr}")
+                    success = False
                     continue
-                with open(output_filename, 'w') as f:
+                with open(output_filename, 'w', encoding='utf-8') as f:
                     f.write(str(encrypted_data))
+                log_event(log_file_path, file_key, LogStatus.ENCRYPTED,
+                         LogEvent.FILE_ENCRYPT, "File encrypted successfully")
             except Exception as e:
+                log_event(log_file_path, file_key, LogStatus.ERROR,
+                         LogEvent.FILE_ENCRYPT, f"Encryption error: {str(e)}")
+                success = False
                 continue
-        
-        return True
-        
+
+        return success
+
     except Exception as e:
+        log_event(log_file_path, "N/A", LogStatus.ERROR,
+                 LogEvent.FILE_ENCRYPT, f"Encryption process error: {str(e)}")
         raise
-    
-    
-def update_checkpoint_file(log_file, department,checkpoint_file: str, newest_file: str, newest_mtime: float, newest_checksum: str):
+
+def update_checkpoint_file(log_file, department, checkpoint_file: str, newest_file: str, newest_mtime: float, newest_checksum: str):
     try:
-        with open(checkpoint_file, 'a') as f:
+        with open(checkpoint_file, 'a', encoding='utf-8') as f:
             f.write(f"{newest_mtime}|{newest_file}|{newest_checksum}\n")
-        log_event(log_file, department, newest_file, LogStatus.SUCCESS, 
+        log_event(log_file, department, newest_file, LogStatus.SUCCESS,
                  LogEvent.CHECKPOINT, f"Updated checkpoint for file: {newest_file}")
     except Exception as e:
-        log_event(log_file, department, checkpoint_file, LogStatus.ERROR, 
-                 LogEvent.CHECKPOINT, f"Error updating checkpoint: {str(e)}")   
-
+        log_event(log_file, department, checkpoint_file, LogStatus.ERROR,
+                 LogEvent.CHECKPOINT, f"Error updating checkpoint: {str(e)}")
 
 def load_config(config_path=None):
     """Load configuration from a YAML file. Default: same folder as the executable."""
-    if config_path is None:
-        if getattr(sys, 'frozen', False):
-            # Running as compiled executable
-            exe_dir = Path(sys.executable).parent
+    try:
+        if config_path is None:
+            exe_dir = Path(sys.executable).parent if getattr(sys, 'frozen', False) else Path(__file__).parent
+            config_path = exe_dir / 'config.yml'
         else:
-            # Running as script
-            exe_dir = Path(__file__).parent
-        config_path = exe_dir / 'config.yml'
-    else:
-        config_path = Path(config_path)
-    if not config_path.exists():
-        raise FileNotFoundError(f"Config file not found at {config_path}")
-    
-    with open(config_path, 'r') as file:
-        config = yaml.safe_load(file)
-    
-    return config
- 
+            config_path = Path(config_path)
+
+        if not config_path.exists():
+            raise FileNotFoundError(f"Config file not found at {config_path}")
+
+        with open(config_path, 'r', encoding='utf-8') as file:
+            config = yaml.safe_load(file)
+
+        if config is None:
+            raise ValueError("Config file is empty")
+
+        required_keys = ['input_folder', 'output_folder', 'file_types', 'gpg_key', 'checkpoint_file', 'log_file']
+        missing_keys = [key for key in required_keys if key not in config]
+        if missing_keys:
+            raise ValueError(f"Config file missing required keys: {missing_keys}")
+
+        # Convert paths to absolute to avoid issues on Windows
+        config['input_folder'] = str(Path(config['input_folder']).resolve())
+        config['output_folder'] = str(Path(config['output_folder']).resolve())
+        config['gpg_key'] = str(Path(config['gpg_key']).resolve())
+        config['checkpoint_file'] = str(Path(config['checkpoint_file']).resolve())
+        config['log_file'] = str(Path(config['log_file']).resolve())
+
+        return config
+    except Exception as e:
+        print(f"Error loading config: {e}")
+        raise
 
 def main():
-    config = load_config()
-    xml_dir = config['input_folder']
-    file_types = config['file_types']
-    gpg_key_path = config['gpg_key']
-    checkpoint_file_path = config['checkpoint_file']
-    log_file_path = config['log_file']
-    dir_encrypt_path = config['output_folder']
     department = "Processing"
-    
-    os.makedirs(dir_encrypt_path, exist_ok=True)
     try:
-        log_event(log_file_path, department, "", LogStatus.STARTED, 
+        config = load_config()
+        xml_dir = config['input_folder']
+        file_types = config['file_types']
+        gpg_key_path = config['gpg_key']
+        checkpoint_file_path = config['checkpoint_file']
+        log_file_path = config['log_file']
+        dir_encrypt_path = config['output_folder']
+
+        # Ensure directories exist
+        os.makedirs(dir_encrypt_path, exist_ok=True)
+        os.makedirs(xml_dir, exist_ok=True)
+        os.makedirs(os.path.dirname(log_file_path), exist_ok=True)
+        os.makedirs(os.path.dirname(checkpoint_file_path), exist_ok=True)
+
+        log_event(log_file_path, department, "", LogStatus.STARTED,
                  LogEvent.PROCESS_START, "Initiating file processing")
-        # check new file
+
         new_files = filter_newest_file_with_checkpoint(
-            log_file_path,
-            xml_dir, checkpoint_file_path, file_types, None, 
+            log_file_path, xml_dir, checkpoint_file_path, file_types, None,
             log_file_path, department,
         )
         if not new_files:
-            log_event(log_file_path, department, xml_dir, LogStatus.FAILED, 
+            log_event(log_file_path, department, xml_dir, LogStatus.FAILED,
                      LogEvent.FILE_SCAN, "No new files detected")
             return
-        newest_file, newest_mtime, newest_checksum = new_files[0]  
-        mc_files = [convert_xml_to_mc(path) for path, _, _ in new_files]
-        with open(gpg_key_path, 'r') as key_file:
+
+        mc_files = [f for f in [convert_xml_to_mc(file) for file, _, _ in new_files] if f]
+        if not mc_files:
+            log_event(log_file_path, department, xml_dir, LogStatus.FAILED,
+                     LogEvent.PROCESSING, "No valid .mc files generated")
+            return
+
+        newest_file, newest_mtime, newest_checksum = new_files[0]
+        with open(gpg_key_path, 'r', encoding='utf-8') as key_file:
             gpg_key = key_file.read()
-            # encrypt file 
-        status = encrypt_file(mc_files, gpg_key, dir_encrypt_path, log_file_path)   
+
+        status = encrypt_file(mc_files, gpg_key, dir_encrypt_path, log_file_path)
         if status:
-            log_event(log_file_path, department, newest_file, LogStatus.ENCRYPTED, 
-                     LogEvent.FILE_ENCRYPT, "File encrypted successfully") 
-            update_checkpoint_file(log_file_path, department,checkpoint_file_path, newest_file, newest_mtime, newest_checksum)
-        return
+            log_event(log_file_path, department, newest_file, LogStatus.ENCRYPTED,
+                     LogEvent.FILE_ENCRYPT, "All files encrypted successfully")
+            update_checkpoint_file(log_file_path, department, checkpoint_file_path,
+                                 newest_file, newest_mtime, newest_checksum)
+            for file in mc_files:
+                if file and os.path.exists(file):
+                    try:
+                        os.remove(file)
+                        log_event(log_file_path, department, file, LogStatus.SUCCESS,
+                                 LogEvent.PROCESSING, "Temporary .mc file removed")
+                    except Exception as e:
+                        log_event(log_file_path, department, file, LogStatus.ERROR,
+                                 LogEvent.PROCESSING, f"Failed to remove .mc file: {str(e)}")
+        else:
+            log_event(log_file_path, department, newest_file, LogStatus.FAILED,
+                     LogEvent.FILE_ENCRYPT, "Some files failed to encrypt")
 
     except Exception as e:
-        log_event(log_file_path, department, newest_file if 'newest_file' in locals() else "", 
-                 LogStatus.ERROR, LogEvent.PROCESSING, f"Main process error: {str(e)}")
+        log_event(log_file_path, department, "", LogStatus.ERROR,
+                 LogEvent.PROCESSING, f"Main process error: {str(e)}")
         print(f"Error: {e}")
-
 
 if __name__ == "__main__":
     main()
-
