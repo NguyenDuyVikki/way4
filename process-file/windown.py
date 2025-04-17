@@ -11,6 +11,8 @@ import gnupg
 import sys
 import yaml
 from pathlib import Path
+from pathlib import Path
+from datetime import datetime, timedelta
 
 class LogStatus(str, Enum):
     STARTED = "Started"
@@ -28,6 +30,28 @@ class LogEvent(str, Enum):
     CHECKPOINT = "Checkpoint"
     PROCESSING = "Processing"
     FILE_ENCRYPT = "FileEncrypt"
+
+
+def get_log_filename(dir_log_path=None):
+    # Get the current date in 'YYYY-MM-DD' format
+    today = datetime.now().strftime('%Y-%m-%d')
+    return os.path.join(dir_log_path, f"log_{today}.log")
+
+def delete_old_logs(dir_log_path):
+    # Delete log files older than 30 days
+    cutoff_date = datetime.now() - timedelta(days=30)
+    for filename in os.listdir(dir_log_path):
+        file_path = os.path.join(dir_log_path, filename)
+        if os.path.isfile(file_path):
+            # Get the file's last modification time
+            file_mtime = datetime.fromtimestamp(os.path.getmtime(file_path))
+            # If the file is older than 30 days, remove it
+            if file_mtime < cutoff_date:
+                try:
+                    os.remove(file_path)
+                    print(f"Deleted old log file: {file_path}")
+                except Exception as e:
+                    print(f"Error deleting log file {file_path}: {e}")
 
 def format_logging_message(department, file_name, status, event_type, details):
     now = datetime.now()
@@ -363,7 +387,6 @@ def filter_newest_file_with_checkpoint(
     if not new_files:
         log_event(log_file, department, folder_path, LogStatus.FAILED,
                  LogEvent.FILE_SCAN, "No new files detected")
-        raise RuntimeError("No new files detected.")
 
     new_files.sort(key=lambda x: x[1], reverse=True)
 
@@ -378,7 +401,7 @@ def get_gpg_binary_path():
         gpg_path = None  # Let gnupg find system GPG when not bundled
     return gpg_path
 
-def encrypt_file(xml_files: list, key: str, dir_path, log_file_tpath) -> bool:
+def encrypt_file(xml_files: list, key: str, dir_path, log_file_path) -> bool:
     try:
         # Use bundled GPG binary
         gpg_binary = get_gpg_binary_path()
@@ -488,8 +511,12 @@ def main():
         file_types = config['file_types']
         gpg_key_path = config['gpg_key']
         checkpoint_file_path = config['checkpoint_file']
-        log_file_path = config['log_file']
+        dir_log_path = config['dir_log']
+        log_file_path = get_log_filename(dir_log_path)
         dir_encrypt_path = config['output_folder']
+        
+        
+        delete_old_logs(dir_log_path)
 
         # Ensure directories exist
         os.makedirs(dir_encrypt_path, exist_ok=True)
@@ -509,34 +536,32 @@ def main():
                      LogEvent.FILE_SCAN, "No new files detected")
             return
 
-        mc_files = [f for f in [convert_xml_to_mc(file) for file, _, _ in new_files] if f]
-        if not mc_files:
-            log_event(log_file_path, department, xml_dir, LogStatus.FAILED,
-                     LogEvent.PROCESSING, "No valid .mc files generated")
-            return
-
+        # mc_files = [f for f in [convert_xml_to_mc(file) for file, _, _ in new_files] if f]
         newest_file, newest_mtime, newest_checksum = new_files[0]
         with open(gpg_key_path, 'r', encoding='utf-8') as key_file:
             gpg_key = key_file.read()
-
-        status = encrypt_file(mc_files, gpg_key, dir_encrypt_path, log_file_path)
-        if status:
-            log_event(log_file_path, department, newest_file, LogStatus.ENCRYPTED,
-                     LogEvent.FILE_ENCRYPT, "All files encrypted successfully")
-            update_checkpoint_file(log_file_path, department, checkpoint_file_path,
-                                 newest_file, newest_mtime, newest_checksum)
-            for file in mc_files:
-                if file and os.path.exists(file):
+            
+        for file, _, _ in new_files:
+            mc_file = convert_xml_to_mc(file)
+            if mc_file:  
+                status = encrypt_file([mc_file], gpg_key, dir_encrypt_path, log_file_path)
+                if status:
+                    log_event(log_file_path, department, newest_file, LogStatus.ENCRYPTED,
+                            LogEvent.FILE_ENCRYPT, "All files encrypted successfully")
+                    update_checkpoint_file(log_file_path, department, checkpoint_file_path,
+                                        newest_file, newest_mtime, newest_checksum)
                     try:
-                        os.remove(file)
-                        log_event(log_file_path, department, file, LogStatus.SUCCESS,
-                                 LogEvent.PROCESSING, "Temporary .mc file removed")
+                        if os.path.exists(mc_file):
+                            os.remove(file)
+                            log_event(log_file_path, department, file, LogStatus.SUCCESS,LogEvent.PROCESSING, "Temporary .mc file removed")
                     except Exception as e:
-                        log_event(log_file_path, department, file, LogStatus.ERROR,
-                                 LogEvent.PROCESSING, f"Failed to remove .mc file: {str(e)}")
-        else:
-            log_event(log_file_path, department, newest_file, LogStatus.FAILED,
-                     LogEvent.FILE_ENCRYPT, "Some files failed to encrypt")
+                            log_event(log_file_path, department, file, LogStatus.ERROR,LogEvent.PROCESSING, f"Failed to remove .mc file: {str(e)}")
+                else:
+                    log_event(log_file_path, department, newest_file, LogStatus.FAILED,
+                        LogEvent.FILE_ENCRYPT, "Some files failed to encrypt")
+            else:
+                log_event(log_file_path, department, xml_dir, LogStatus.FAILED,
+                        LogEvent.PROCESSING, "No valid .mc files generated")
 
     except Exception as e:
         log_event(log_file_path, department, "", LogStatus.ERROR,
