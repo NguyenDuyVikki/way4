@@ -1,0 +1,10 @@
+input_folder: "/Users/duynguyen/Documents/vikki-bank/de-training/vikki-train/way4/test-mc-file/xml_in"
+file_types:
+  - ".xml"
+gpg_key: "/Users/duynguyen/Documents/vikki-bank/de-training/vikki-train/way4/process-file/data_4096_pub.asc"
+checkpoint_file: "/Users/duynguyen/Documents/vikki-bank/de-training/vikki-train/way4/test-mc-file/checkpoint.txt"
+dir_log: "/Users/duynguyen/Documents/vikki-bank/de-training/vikki-train/way4/test-mc-file/logs"
+output_folder: "/Users/duynguyen/Documents/vikki-bank/de-training/vikki-train/way4/test-mc-file/encrypted_files"
+gpg_dir: "C:/way4/vikki_test/GnuPG"
+
+
